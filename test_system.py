@@ -3,8 +3,6 @@ import unittest
 import tempfile
 import os
 import csv
-from contextlib import redirect_stdout
-from io import StringIO
 
 from student import Student
 from result_manager import ResultManager
@@ -31,12 +29,50 @@ class TestStudent(unittest.TestCase):
     def test_calculate_grade(self):
         self.assertEqual(self.student.calculate_grade(), "A+")
 
+    def test_grade_boundaries(self):
+        grade_cases = [
+            (80, "A+"),
+            (70, "A"),
+            (60, "A-"),
+            (50, "B"),
+            (40, "C"),
+            (33, "D"),
+            (32, "F")
+        ]
+
+        for mark, expected_grade in grade_cases:
+            with self.subTest(mark=mark):
+                student = Student(
+                    "Test Student",
+                    "ST100",
+                    [mark, mark, mark, mark, mark]
+                )
+
+                self.assertEqual(
+                    student.calculate_grade(),
+                    expected_grade
+                )
+
     def test_student_pass_status(self):
         self.assertEqual(self.student.get_status(), "Pass")
 
     def test_student_fail_status(self):
-        student = Student("Karim", "ST002", [80, 75, 25, 90, 70])
+        student = Student(
+            "Karim",
+            "ST002",
+            [80, 75, 25, 90, 70]
+        )
+
         self.assertEqual(student.get_status(), "Fail")
+
+    def test_minimum_passing_marks(self):
+        student = Student(
+            "Nila",
+            "ST003",
+            [33, 33, 33, 33, 33]
+        )
+
+        self.assertEqual(student.get_status(), "Pass")
 
     def test_report_card(self):
         report = self.student.display_report_card()
@@ -45,6 +81,7 @@ class TestStudent(unittest.TestCase):
         self.assertIn("ST001", report)
         self.assertIn("Total Marks: 400 / 500", report)
         self.assertIn("Grade: A+", report)
+        self.assertIn("Status: Pass", report)
 
 
 class TestResultManager(unittest.TestCase):
@@ -84,7 +121,11 @@ class TestResultManager(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_add_student(self):
-        student = Student("Nila", "ST004", [80, 80, 80, 80, 80])
+        student = Student(
+            "Nila",
+            "ST004",
+            [80, 80, 80, 80, 80]
+        )
 
         result = self.manager.add_student(student)
 
@@ -92,7 +133,11 @@ class TestResultManager(unittest.TestCase):
         self.assertEqual(len(self.manager.get_all_students()), 4)
 
     def test_duplicate_student_id(self):
-        duplicate = Student("Another Rahim", "ST001", [70, 70, 70, 70, 70])
+        duplicate = Student(
+            "Another Rahim",
+            "ST001",
+            [70, 70, 70, 70, 70]
+        )
 
         result = self.manager.add_student(duplicate)
 
@@ -110,12 +155,21 @@ class TestResultManager(unittest.TestCase):
 
         self.assertIsNone(student)
 
+    def test_get_all_students(self):
+        students = self.manager.get_all_students()
+
+        self.assertEqual(len(students), 3)
+
     def test_update_student(self):
         updated_marks = [90, 90, 90, 90, 90]
 
-        result = self.manager.update_student("ST001", updated_marks)
+        result = self.manager.update_student(
+            "ST001",
+            updated_marks
+        )
 
         self.assertTrue(result)
+
         self.assertEqual(
             self.manager.search_student("ST001").marks,
             updated_marks
@@ -125,6 +179,22 @@ class TestResultManager(unittest.TestCase):
         result = self.manager.update_student(
             "ST001",
             [90, 90, 90, 90, 110]
+        )
+
+        self.assertFalse(result)
+
+    def test_update_negative_marks(self):
+        result = self.manager.update_student(
+            "ST001",
+            [90, 90, 90, 90, -5]
+        )
+
+        self.assertFalse(result)
+
+    def test_update_invalid_mark_count(self):
+        result = self.manager.update_student(
+            "ST001",
+            [90, 90, 90, 90]
         )
 
         self.assertFalse(result)
@@ -177,6 +247,22 @@ class TestResultManager(unittest.TestCase):
 
         self.assertIn("Bangla", summary["subject_stats"])
 
+    def test_class_summary_grade_counts(self):
+        summary = self.manager.generate_class_summary()
+
+        self.assertEqual(
+            sum(summary["grade_counts"].values()),
+            3
+        )
+
+    def test_subject_statistics(self):
+        summary = self.manager.generate_class_summary()
+
+        bangla_stats = summary["subject_stats"]["Bangla"]
+
+        self.assertEqual(bangla_stats["highest"], 90)
+        self.assertEqual(bangla_stats["lowest"], 60)
+
     def test_save_students(self):
         result = self.manager.save_students()
 
@@ -207,13 +293,50 @@ class TestResultManager(unittest.TestCase):
                 "English", "Mathematics", "Science", "ICT"
             ])
 
-            writer.writerow(["Rahim", "ST001", 80, 80, 80, 80, 80])
-            writer.writerow(["Karim", "ST001", 70, 70, 70, 70, 70])
+            writer.writerow([
+                "Rahim", "ST001", 80, 80, 80, 80, 80
+            ])
+
+            writer.writerow([
+                "Karim", "ST001", 70, 70, 70, 70, 70
+            ])
 
         new_manager = ResultManager()
         count = new_manager.load_students()
 
         self.assertEqual(count, 1)
+
+    def test_load_invalid_records(self):
+        with open("students.csv", "w", newline="") as file:
+            writer = csv.writer(file)
+
+            writer.writerow([
+                "Name", "Student ID", "Bangla",
+                "English", "Mathematics", "Science", "ICT"
+            ])
+
+            writer.writerow([
+                "Rahim", "ST001", 80, 80, 80, 80, 80
+            ])
+
+            writer.writerow([
+                "Karim", "ST002", 80, 80, 80, 80, 110
+            ])
+
+            writer.writerow([
+                "Nila", "ST003", 80, 80, 80
+            ])
+
+            writer.writerow([
+                "", "ST004", 80, 80, 80, 80, 80
+            ])
+
+        new_manager = ResultManager()
+        count = new_manager.load_students()
+
+        self.assertEqual(count, 1)
+        self.assertIsNotNone(new_manager.search_student("ST001"))
+        self.assertIsNone(new_manager.search_student("ST002"))
 
 
 class TestEmptyResultManager(unittest.TestCase):
@@ -238,6 +361,14 @@ class TestEmptyResultManager(unittest.TestCase):
         self.assertEqual(summary["pass_count"], 0)
         self.assertEqual(summary["fail_count"], 0)
         self.assertEqual(summary["pass_percentage"], 0)
+
+    def test_empty_subject_statistics(self):
+        summary = self.manager.generate_class_summary()
+
+        self.assertEqual(
+            summary["subject_stats"]["Bangla"]["average"],
+            0
+        )
 
 
 if __name__ == "__main__":
